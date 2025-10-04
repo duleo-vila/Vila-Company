@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="sq">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Vila Company — POS</title>
+<meta name="description" content="Vila Company — POS: List, Inventory, Sell Tot, Sell Window (fixed) — ruajtje localStorage" />
+<style>
+:root{
+  --bg1:#06121a; --bg2:#0f2740;
+  --panel:#082433; --card:#0b2a44;
+  --accent:#4fc3f7; --accent2:#caa0ff;
+  --sellblue:#062b4a;
+  --glass: rgba(255,255,255,0.03);
+  --shadow: 0 18px 40px rgba(2,6,23,.6);
+  --muted: rgba(255,255,255,0.75);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg1),var(--bg2));color:#fff;min-height:100vh}
+.wrap{max-width:1200px;margin:18px auto;padding:18px}
+header{position:fixed;left:0;top:0;right:0;background:linear-gradient(90deg,#001426,#002b54);padding:12px 18px;display:flex;justify-content:space-between;align-items:center;z-index:1100;box-shadow:0 6px 30px rgba(0,0,0,.6)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand .logo{width:46px;height:46px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#012737;font-weight:800}
+.header-actions{display:flex;gap:10px;align-items:center}
+.btn{padding:8px 12px;border-radius:10px;border:none;cursor:pointer;background:transparent;color:inherit;font-weight:700}
+.btn.primary{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#012737}
+.btn.warn{background:#ff7a6d;color:#111}
+
+/* layout */
+main{padding-top:86px}
+#home-wrap{min-height:calc(60vh - 86px);display:flex;align-items:center;justify-content:center;text-align:center;padding:30px}
+.home-card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:28px;border-radius:14px;box-shadow:var(--shadow);max-width:920px}
+.home-card .icon{font-size:72px;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.small{font-size:13px;opacity:.92;color:rgba(220,235,255,0.9)}
+.section{margin-top:20px;padding:0 2px}
+.products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:12px}
+.product{background:var(--card);padding:12px;border-radius:10px;cursor:pointer;border:1px solid rgba(255,255,255,0.03);transition:transform .12s ease}
+.product:hover{transform:translateY(-4px)}
+.product strong{display:block;margin-bottom:8px}
+.product .meta{font-size:13px;opacity:.92;color:var(--muted)}
+
+/* modal */
+.modal-back{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.56);z-index:1200;padding:18px}
+.modal-back.show{display:flex}
+.modal{width:min(980px,96%);max-height:86vh;overflow:auto;background:linear-gradient(180deg,#ffffff05,#00000006);padding:16px;border-radius:12px;box-shadow:0 30px 60px rgba(0,0,0,.7);position:relative}
+.modal .close{position:absolute;right:12px;top:8px;border:none;background:transparent;color:inherit;font-size:20px;cursor:pointer}
+
+/* grid inside modals */
+.grid{display:grid;grid-template-columns:1fr 340px;gap:12px}
+.panel{background:rgba(255,255,255,0.02);padding:12px;border-radius:10px}
+
+/* tables */
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.04)}
+.table th{background:#0b2a44}
+
+/* sell window fixed */
+.sell-window{
+  position:fixed; right:18px; bottom:18px;
+  width:min(420px,94%); max-height:70vh; overflow:auto;
+  background:linear-gradient(180deg,var(--sellblue), #04233a);
+  border-radius:12px;padding:12px;box-shadow:0 22px 60px rgba(0,0,0,.7);z-index:1300;display:none;
+}
+.sell-window.show{display:block}
+.sell-table{width:100%;border-collapse:collapse;margin-top:8px}
+.sell-table th,.sell-table td{padding:6px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:13px}
+.sell-actions{display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:8px}
+
+/* utilities */
+.footer{margin-top:30px;text-align:center;color:#cfe6ff;padding:12px}
+.input{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;width:100%}
+.row{display:flex;gap:8px;align-items:center}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.sell-window{right:10px;left:10px;width:auto;bottom:10px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">VC</div>
+      <div>
+        <div style="font-weight:800">Vila Company</div>
+        <div class="small">POS i thjeshtë — shpejt & responsive</div>
+      </div>
+    </div>
+
+    <div class="header-actions" role="navigation" aria-label="navigation">
+      <button class="btn" id="btnList" title="List - shto produkte">List</button>
+      <button class="btn" id="btnInventory" title="Inventory - shiko stokun">Inventory</button>
+      <button class="btn" id="btnSellTot" title="Sell Tot - historiku">Sell Tot</button>
+      <button class="btn warn" id="btnCloseShift" title="Mbyll Turn - fshi shitjet">Mbyll Turn</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Home center -->
+    <section id="home-wrap">
+      <div class="home-card" id="homeCard">
+        <div class="icon">🛒</div>
+        <h1 style="margin:8px 0 6px">Mirë se vini në Vila Company</h1>
+        <p class="small" style="max-width:760px;margin:0 auto">
+          Shto produktet nga <strong>List</strong> (butoni lart). Produktet e shënuara shfaqen në tabelën më poshtë — klikoni një produkt për ta shtuar në shportë. Dritarja e shitjes hapet automatikisht dhe tregon artikujt me mundësi për të hequr (❌) ose për t'i konfirmuar (✅).
+        </p>
+      </div>
+    </section>
+
+    <!-- Products table on home -->
+    <section class="section" aria-labelledby="productsTitle">
+      <h3 id="productsTitle">Produktet (klik për të shitur)</h3>
+      <div id="productsGrid" class="products-grid" aria-live="polite"></div>
+    </section>
+
+    <div class="footer">© 2025 Vila Company — Krijuar nga <strong>Duleo Vila</strong></div>
+  </main>
+</div>
+
+<!-- LIST modal (popup with form) -->
+<div id="listModal" class="modal-back" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true">
+    <button class="close" onclick="closeModal('listModal')">✖</button>
+    <h3>Shto Produkt (List)</h3>
+    <div class="grid">
+      <div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="inputName" class="input" placeholder="Emri i produktit">
+          <input id="inputPrice" class="input" placeholder="Çmimi" type="number" style="width:140px">
+          <input id="inputQty" class="input" placeholder="Sasia" type="number" style="width:120px">
+          <button class="btn primary" onclick="addProductFromList()">💾 Ruaj</button>
+        </div>
+
+        <h4 style="margin-top:14px">Lista e Produkteve</h4>
+        <ul id="listProducts" style="list-style:none;padding:0;margin:0"></ul>
+      </div>
+
+      <div class="panel">
+        <h4>Shporta (Draft)</h4>
+        <div id="sideCart" class="small"></div>
+        <div style="margin-top:10px" class="sell-actions">
+          <button class="btn primary" onclick="confirmSale()">✅ Shitje e përfunduar</button>
+          <button class="btn" onclick="clearCart()">🗑 Pastro</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INVENTORY modal -->
+<div id="invModal" class="modal-back" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true">
+    <button class="close" onclick="closeModal('invModal')">✖</button>
+    <h3>Inventory</h3>
+    <div class="panel">
+      <table class="table" id="inventoryTable">
+        <thead><tr><th>Produkt</th><th>Çmimi</th><th>Sasia</th><th>Veprim</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- SELL TOT modal -->
+<div id="sellTotModal" class="modal-back" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true">
+    <button class="close" onclick="closeModal('sellTotModal')">✖</button>
+    <h3>Sell Tot — Historiku i Shitjeve</h3>
+    <div class="grid">
+      <div>
+        <h4>Shitjet</h4>
+        <div id="salesHistory" style="max-height:420px;overflow:auto"></div>
+      </div>
+      <div class="panel">
+        <h4>Xhiro Totale</h4>
+        <div id="totalSales" class="small">0 Lekë</div>
+        <div style="margin-top:12px" class="small">Shitjet ruhen lokal në pajisjen tuaj.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FIXED SELL WINDOW (bottom-right) -->
+<aside id="sellWindow" class="sell-window" aria-hidden="true">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h4 style="margin:0">🧾 Shporta</h4>
+    <div><button class="btn" onclick="hideSellWindow()">✖</button></div>
+  </div>
+
+  <table class="sell-table" id="sellTable">
+    <thead><tr><th>#</th><th>Produkt</th><th>Sasia</th><th>Çmimi</th><th>Veprim</th></tr></thead>
+    <tbody id="sellBody"></tbody>
+  </table>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+    <div class="total-box" style="font-weight:800">Totali: <span id="sellTotal">0</span> Lekë</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn primary" onclick="confirmSale()">Përfundo (✅)</button>
+      <button class="btn" onclick="clearCart()">Pastro</button>
+    </div>
+  </div>
+
+  <div style="margin-top:8px" class="small">Kliko ❌ për të hequr një produkt nga tabela</div>
+</aside>
+
+<script>
+/* Storage keys */
+const K_PRODUCTS = 'vc_products_v2';
+const K_CART = 'vc_cart_v2';
+const K_SALES = 'vc_sales_v2';
+
+/* State */
+let products = JSON.parse(localStorage.getItem(K_PRODUCTS) || '[]');
+let cart = JSON.parse(localStorage.getItem(K_CART) || '[]');
+let sales = JSON.parse(localStorage.getItem(K_SALES) || '[]');
+
+/* Refs */
+const productsGrid = document.getElementById('productsGrid');
+const listModal = document.getElementById('listModal');
+const invModal = document.getElementById('invModal');
+const sellTotModal = document.getElementById('sellTotModal');
+const sellWindow = document.getElementById('sellWindow');
+const sellBody = document.getElementById('sellBody');
+const sellTotal = document.getElementById('sellTotal');
+const sideCart = document.getElementById('sideCart');
+const listProductsUl = document.getElementById('listProducts');
+const inventoryTbody = document.querySelector('#inventoryTable tbody');
+const cartTableWrap = document.getElementById('cartTableWrap');
+const salesHistory = document.getElementById('salesHistory');
+const totalSalesEl = document.getElementById('totalSales');
+
+/* Persist/load */
+function persistAll(){
+  localStorage.setItem(K_PRODUCTS, JSON.stringify(products));
+  localStorage.setItem(K_CART, JSON.stringify(cart));
+  localStorage.setItem(K_SALES, JSON.stringify(sales));
+}
+function loadAll(){
+  products = JSON.parse(localStorage.getItem(K_PRODUCTS) || '[]');
+  cart = JSON.parse(localStorage.getItem(K_CART) || '[]');
+  sales = JSON.parse(localStorage.getItem(K_SALES) || '[]');
+}
+
+/* Modal helpers */
+function openModal(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.add('show');
+  el.setAttribute('aria-hidden','false');
+  renderAll();
+}
+function closeModal(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.remove('show');
+  el.setAttribute('aria-hidden','true');
+}
+
+/* Sell window control */
+function showSellWindow(){ sellWindow.classList.add('show'); sellWindow.setAttribute('aria-hidden','false'); renderSell(); }
+function hideSellWindow(){ sellWindow.classList.remove('show'); sellWindow.setAttribute('aria-hidden','true'); }
+
+/* Render home products grid */
+function renderProductsGrid(){
+  productsGrid.innerHTML = '';
+  if(products.length === 0){
+    productsGrid.innerHTML = '<div class="small">S\'ka produkte. Shto prej List.</div>';
+    return;
+  }
+  products.forEach((p,i)=>{
+    const card = document.createElement('div');
+    card.className = 'product';
+    card.tabIndex = 0;
+    card.innerHTML = `<strong>${p.name}</strong><div class="meta">${p.price} Lekë</div><div class="small">Sasi: ${p.qty}</div>`;
+    card.onclick = ()=> {
+      if(p.qty <= 0){ alert('Nuk ka stok!'); return; }
+      // add one to cart (but not yet reduce inventory until confirmSale)
+      addToCart({name:p.name, price:p.price, qty:1, index:i});
+      showSellWindow();
+      flashConfirmation(p.name);
+    };
+    card.onkeydown = (e)=> { if(e.key==='Enter') card.onclick(); };
+    productsGrid.appendChild(card);
+  });
+}
+
+/* Small visual confirmation (toast-like) */
+function flashConfirmation(text){
+  // small transient badge near sell window
+  const badge = document.createElement('div');
+  badge.style.position = 'fixed';
+  badge.style.right = '24px';
+  badge.style.bottom = 'calc(18px + 8vh)';
+  badge.style.background = 'rgba(255,255,255,0.06)';
+  badge.style.padding = '8px 12px';
+  badge.style.borderRadius = '10px';
+  badge.style.zIndex = 1400;
+  badge.style.backdropFilter = 'blur(6px)';
+  badge.innerText = `Shtuar: ${text}`;
+  document.body.appendChild(badge);
+  setTimeout(()=>{ badge.style.transition='opacity .5s'; badge.style.opacity='0'; setTimeout(()=>badge.remove(),500); },1100);
+}
+
+/* List modal: render list */
+function renderList(){
+  listProductsUl.innerHTML = '';
+  if(products.length === 0){ listProductsUl.innerHTML = '<li class="small">S\'ka produkte</li>'; return; }
+  products.forEach((p,i)=>{
+    const li = document.createElement('li');
+    li.style.padding='8px 0';
+    li.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+      <div><strong>${p.name}</strong><div class="small">${p.price} Lekë — ${p.qty} copë</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn" onclick="addToCartFromList(${i})">Shto</button>
+        <button class="btn" onclick="editProduct(${i})">Ndrysho</button>
+        <button class="btn" onclick="removeProduct(${i})">Fshi</button>
+      </div>
+    </div>`;
+    listProductsUl.appendChild(li);
+  });
+}
+
+/* Inventory render */
+function renderInventory(){
+  inventoryTbody.innerHTML = '';
+  products.forEach((p,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.name}</td><td>${p.price} Lekë</td><td>${p.qty}</td><td></td>`;
+    const td = tr.children[3];
+    const inc = document.createElement('button'); inc.className='btn'; inc.innerText='+'; inc.onclick=()=>{ const v=prompt('Shto sasi (numër)'); const n=parseInt(v); if(!isNaN(n)){ p.qty+=n; persistAll(); renderAll(); } };
+    const dec = document.createElement('button'); dec.className='btn'; dec.innerText='-'; dec.style.marginLeft='6px'; dec.onclick=()=>{ const v=prompt('Hiq sasi (numër)'); const n=parseInt(v); if(!isNaN(n)){ p.qty = Math.max(0,p.qty-n); persistAll(); renderAll(); } };
+    td.appendChild(inc); td.appendChild(dec);
+    inventoryTbody.appendChild(tr);
+  });
+}
+
+/* Sell window render */
+function renderSell(){
+  sellBody.innerHTML = '';
+  if(cart.length === 0){ sellBody.innerHTML = '<tr><td colspan="5" class="small">Shporta bosh</td></tr>'; sellTotal.innerText='0'; return; }
+  cart.forEach((c,idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${idx+1}</td><td>${c.name}</td><td>${c.qty}</td><td>${c.price} Lekë</td><td></td>`;
+    const td = tr.children[4];
+    const minus = document.createElement('button'); minus.className='btn'; minus.innerText='-'; minus.onclick=()=>{ changeCartQty(idx, c.qty-1); };
+    const plus = document.createElement('button'); plus.className='btn'; plus.innerText='+'; plus.style.marginLeft='6px'; plus.onclick=()=>{ changeCartQty(idx, c.qty+1); };
+    const rm = document.createElement('button'); rm.className='btn'; rm.innerText='❌'; rm.style.marginLeft='6px'; rm.onclick=()=>{ removeFromCart(idx); };
+    td.appendChild(minus); td.appendChild(plus); td.appendChild(rm);
+    sellBody.appendChild(tr);
+  });
+  const total = cart.reduce((s,it)=> s + (it.price * it.qty), 0);
+  sellTotal.innerText = total;
+}
+
+/* Side cart in List modal */
+function renderSideCart(){
+  sideCart.innerHTML = '';
+  if(cart.length===0){ sideCart.innerHTML = '<div class="small">Shporta bosh</div>'; return; }
+  cart.forEach((c,i)=>{
+    const d = document.createElement('div'); d.style.display='flex'; d.style.justifyContent='space-between'; d.style.padding='6px 0';
+    d.innerHTML = `<div><strong>${c.name}</strong><div class="small">${c.price} Lekë × ${c.qty}</div></div>`;
+    const rm = document.createElement('button'); rm.className='btn'; rm.innerText='✖'; rm.onclick=()=>{ removeFromCart(i); };
+    d.appendChild(rm); sideCart.appendChild(d);
+  });
+}
+
+/* Cart modal table (Sell Tot modal left) */
+function renderCartModal(){
+  if(!cartTableWrap) return;
+  cartTableWrap.innerHTML = '';
+  if(cart.length===0){ cartTableWrap.innerHTML = '<div class="small">Shporta bosh</div>'; return; }
+  const t = document.createElement('table'); t.className='table';
+  const head = t.insertRow(); head.innerHTML = '<th>Produkt</th><th>Sasia</th><th>Çmimi</th><th>Veprim</th>';
+  cart.forEach((c,i)=>{ const r=t.insertRow(); r.insertCell(0).innerText = c.name; r.insertCell(1).innerText = c.qty; r.insertCell(2).innerText = c.price+' Lekë'; const act = r.insertCell(3); const rm = document.createElement('button'); rm.className='btn'; rm.innerText='❌'; rm.onclick=()=> removeFromCart(i); act.appendChild(rm); });
+  cartTableWrap.appendChild(t);
+}
+
+/* Sales history render */
+function renderSalesHistory(){
+  salesHistory.innerHTML = '';
+  if(sales.length===0){ salesHistory.innerHTML = '<div class="small">S\'ka shitje</div>'; return; }
+  sales.slice().reverse().forEach(s=>{
+    const d = document.createElement('div'); d.style.padding='6px 0';
+    d.innerHTML = `<strong>${s.name}</strong> — ${s.qty} × ${s.price} = ${s.qty*s.price} Lekë <div class="small">${new Date(s.time).toLocaleString()}</div>`;
+    salesHistory.appendChild(d);
+  });
+}
+
+/* totals */
+function updateTotalSales(){
+  const total = sales.reduce((sum,s)=> sum + (s.price * s.qty), 0);
+  totalSalesEl.innerText = total + ' Lekë';
+}
+
+/* CART actions */
+function addToCart(item){
+  const idx = cart.findIndex(c=>c.name===item.name);
+  if(idx>=0){ cart[idx].qty += item.qty; }
+  else cart.push({name:item.name, price:item.price, qty:item.qty, index:item.index});
+  persistAll(); renderSell(); renderSideCart(); renderCartModal();
+}
+
+function addToCartFromList(i){
+  if(products[i].qty<=0){ alert('Nuk ka stok'); return; }
+  addToCart({name:products[i].name, price:products[i].price, qty:1, index:i});
+  showSellWindow();
+}
+
+function changeCartQty(i,newQty){
+  if(newQty <= 0){ removeFromCart(i); return; }
+  cart[i].qty = newQty;
+  persistAll(); renderSell(); renderSideCart(); renderCartModal();
+}
+
+function removeFromCart(i){
+  cart.splice(i,1);
+  persistAll(); renderSell(); renderSideCart(); renderCartModal();
+}
+
+function clearCart(){
+  if(!confirm('Pastro shportën?')) return;
+  cart = [];
+  persistAll(); renderSell(); renderSideCart(); renderCartModal();
+}
+
+/* Confirm sale: reduce inventory and add to sales */
+function confirmSale(){
+  if(cart.length===0){ alert('Shporta bosh'); return; }
+  cart.forEach(it=>{
+    // reduce inventory by qty
+    if(typeof it.index === 'number' && products[it.index]) products[it.index].qty = Math.max(0, products[it.index].qty - it.qty);
+    else {
+      const pi = products.findIndex(p=>p.name === it.name);
+      if(pi>=0) products[pi].qty = Math.max(0, products[pi].qty - it.qty);
+    }
+    sales.push({name: it.name, price: it.price, qty: it.qty, time: Date.now()});
+  });
+  persistAll();
+  cart = [];
+  persistAll();
+  renderAll();
+  hideSellWindow();
+  openModal('sellTotModal');
+  alert('Shitje e përfunduar!');
+}
+
+/* Reset sales */
+function resetSales(){
+  if(!confirm('Mbyll turnin? Kjo do të fshijë historikun e shitjeve.')) return;
+  sales = [];
+  persistAll();
+  renderAll();
+}
+
+/* List form */
+function addProductFromList(){
+  const name = document.getElementById('inputName').value.trim();
+  const price = parseFloat(document.getElementById('inputPrice').value);
+  const qty = parseInt(document.getElementById('inputQty').value) || 0;
+  if(!name || isNaN(price)) return alert('Plotëso emrin dhe çmimin');
+  products.push({name, price, qty});
+  persistAll();
+  document.getElementById('inputName').value=''; document.getElementById('inputPrice').value=''; document.getElementById('inputQty').value='';
+  renderAll();
+}
+
+/* Edit / remove product from inventory */
+function editProduct(i){
+  const p = products[i];
+  const newName = prompt('Ndrysho emrin', p.name);
+  if(newName === null) return;
+  const newPrice = prompt('Ndrysho çmimin', p.price);
+  if(newPrice === null) return;
+  const newQty = prompt('Ndrysho sasinë', p.qty);
+  if(newQty === null) return;
+  p.name = newName.trim() || p.name;
+  p.price = parseFloat(newPrice) || p.price;
+  p.qty = parseInt(newQty) || p.qty;
+  persistAll(); renderAll();
+}
+
+function removeProduct(i){
+  if(!confirm('Fshi këtë produkt nga inventari?')) return;
+  products.splice(i,1);
+  persistAll(); renderAll();
+}
+
+/* Render everything */
+function renderAll(){
+  renderProductsGrid();
+  renderList();
+  renderInventory();
+  renderSell();
+  renderSideCart();
+  renderCartModal();
+  renderSalesHistory();
+  updateTotalSales();
+}
+
+/* seed demo once */
+(function seed(){
+  if(!localStorage.getItem(K_PRODUCTS)){
+    products = [
+      {name:'Kafe Espresso', price:120, qty:20},
+      {name:'Sanduiç', price:350, qty:10},
+      {name:'Ujë 0.5L', price:80, qty:30}
+    ];
+    persistAll();
+  } else loadAll();
+  renderAll();
+})();
+
+/* header buttons bind */
+document.getElementById('btnList').addEventListener('click', ()=> openModal('listModal'));
+document.getElementById('btnInventory').addEventListener('click', ()=> openModal('invModal'));
+document.getElementById('btnSellTot').addEventListener('click', ()=> openModal('sellTotModal'));
+document.getElementById('btnCloseShift').addEventListener('click', ()=> resetSales());
+
+/* backdrop close */
+document.querySelectorAll('.modal-back').forEach(b => b.addEventListener('click', e => { if(e.target === b) closeModal(b.id); }));
+
+/* keyboard shortcuts */
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){ hideSellWindow(); closeModal('listModal'); closeModal('invModal'); closeModal('sellTotModal'); }
+});
+
+/* Accessibility: Enter on inputs */
+['inputName','inputPrice','inputQty'].forEach(id => {
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('keydown', evt => { if(evt.key === 'Enter') addProductFromList(); });
+});
+
+/* open/close sell window helpers on product click already set in renderProductsGrid */
+function showSellWindowIfHas(){ if(cart.length>0) showSellWindow(); }
+
+/* For debugging (optional) */
+// window.debugState = ()=>({products,cart,sales});
+</script>
+</body>
+</html>
+
